@@ -1,0 +1,542 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Timetable Manager</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:Arial,sans-serif;background:#f0f4f8;min-height:100vh}
+  input,select{border:1px solid #ccc;border-radius:5px;padding:5px 8px;font-size:12px}
+  button{cursor:pointer}
+  .login-wrap{min-height:100vh;background:linear-gradient(135deg,#073763,#1565c0);display:flex;align-items:center;justify-content:center}
+  .login-box{background:#fff;border-radius:16px;padding:40px;width:380px;box-shadow:0 8px 32px rgba(0,0,0,0.3)}
+  .login-box h2{color:#073763;margin:8px 0 4px;font-size:22px}
+  .login-box p{color:#888;font-size:13px}
+  .field{margin-bottom:16px}
+  .field label{font-size:12px;color:#555;font-weight:bold;display:block;margin-bottom:4px}
+  .field input{width:100%;padding:10px 12px;font-size:14px}
+  .btn-login{width:100%;padding:12px;background:#073763;color:#fff;border:none;border-radius:8px;font-size:15px;font-weight:bold}
+  .btn-login:disabled{background:#90a4ae}
+  .err{background:#fdecea;border:1px solid #ef9a9a;border-radius:8px;padding:10px 12px;font-size:13px;color:#b71c1c;margin-bottom:16px}
+  .topbar{background:linear-gradient(90deg,#073763,#1565c0);padding:12px 20px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px}
+  .topbar h1{color:#fff;font-size:20px}
+  .topbar small{color:#90caf9;font-size:12px;display:block}
+  .tabs{display:flex;gap:6px;margin:16px 16px 0}
+  .tab{padding:8px 22px;border-radius:8px 8px 0 0;border:none;font-weight:bold;font-size:14px;cursor:pointer}
+  .tab.active{background:#073763;color:#fff}
+  .tab.inactive{background:#c9d8ef;color:#073763}
+  .card{background:#fff;border-radius:10px;box-shadow:0 2px 8px rgba(0,0,0,0.1);overflow:hidden;margin:0 16px 16px}
+  .card-head{padding:10px 16px;font-weight:bold;color:#fff;display:flex;align-items:center;gap:10px}
+  .card-body{padding:12px;overflow-x:auto}
+  table{border-collapse:collapse;width:100%}
+  th,td{border:1px solid #ddd;padding:6px 8px;text-align:center;font-size:12px}
+  .th-dark{background:#073763;color:#fff;font-size:12px;white-space:nowrap}
+  .fixed-row{background:#fce8e6}
+  .time-col{background:#f8fbff;font-weight:bold;white-space:nowrap}
+  .sub-btn{padding:3px 10px;border-radius:5px;font-size:11px}
+  #app{display:none}
+</style>
+</head>
+<body>
+
+<!-- LOGIN -->
+<div class="login-wrap" id="loginWrap">
+  <div class="login-box">
+    <div style="text-align:center;margin-bottom:28px">
+      <div style="font-size:48px">🗓️</div>
+      <h2>Timetable Manager</h2>
+      <p>Sign in with your licence credentials</p>
+    </div>
+    <div class="field"><label>EMAIL (Licence ID)</label><input id="lemail" type="email" placeholder="your@email.com"/></div>
+    <div class="field"><label>PASSWORD</label><input id="lpass" type="password" placeholder="••••••••"/></div>
+    <div class="err" id="lerr" style="display:none"></div>
+    <button class="btn-login" id="lbtn" onclick="doLogin()">🔐 Sign In</button>
+    <p style="text-align:center;font-size:11px;color:#aaa;margin-top:16px">Contact your administrator for access</p>
+  </div>
+</div>
+
+<!-- MAIN APP -->
+<div id="app">
+  <div class="topbar">
+    <div><h1 id="schoolTitle">🏫 School Timetable</h1><small id="userInfo"></small></div>
+    <div style="display:flex;gap:8px">
+      <button id="adminBtn" onclick="showAdmin()" style="background:#ffd54f;color:#333;border:none;border-radius:8px;padding:7px 16px;font-weight:bold;font-size:13px;display:none">🛡️ Admin Panel</button>
+      <button onclick="doLogout()" style="background:rgba(255,255,255,0.15);color:#fff;border:1px solid rgba(255,255,255,0.4);border-radius:8px;padding:7px 16px;font-weight:bold;font-size:13px">🚪 Logout</button>
+    </div>
+  </div>
+  <div class="tabs">
+    <button class="tab active" onclick="switchTab('tt')">📅 Timetable & Data</button>
+    <button class="tab inactive" onclick="switchTab('sub')">🔄 Substitution Manager</button>
+  </div>
+  <div id="ttTab">
+    <!-- Teacher Data -->
+    <div class="card" style="margin-top:0;border-radius:0 10px 10px 10px">
+      <div class="card-head" style="background:#073763">
+        👨‍🏫 Teacher Data
+        <span style="font-size:12px;font-weight:normal;background:#1a73e8;border-radius:6px;padding:2px 10px">⚡ Parallel = same slot across sections</span>
+        <button onclick="regen()" style="margin-left:auto;background:#34a853;color:#fff;border:none;border-radius:6px;padding:4px 14px;font-size:13px">🔄 Regenerate</button>
+      </div>
+      <div class="card-body"><div id="teacherTable"></div>
+        <button onclick="addTeacher()" style="margin-top:10px;background:#e8f5e9;border:1px solid #81c784;color:#2e7d32;border-radius:6px;padding:6px 16px;font-weight:bold">+ Add Teacher</button>
+      </div>
+    </div>
+    <!-- Timetable -->
+    <div class="card">
+      <div class="card-head" style="background:#073763">
+        📅 Timetable
+        <button onclick="downloadExcel()" style="background:#1e8c45;color:#fff;border:none;border-radius:6px;padding:4px 14px;font-size:13px">⬇️ Download Excel</button>
+        <div style="margin-left:auto;display:flex;gap:8px">
+          <button id="secBtn" onclick="setView('section')" style="background:#1a73e8;color:#fff;border:1px solid #fff;border-radius:6px;padding:4px 14px">Section View</button>
+          <button id="tchBtn" onclick="setView('teacher')" style="background:transparent;color:#fff;border:1px solid #fff;border-radius:6px;padding:4px 14px">Teacher View</button>
+        </div>
+      </div>
+      <div id="ttTabs" style="display:flex;gap:4px;padding:10px 12px 0;flex-wrap:wrap;border-bottom:2px solid #e0e8f0;background:#f8fbff"></div>
+      <div class="card-body"><div id="ttGrid"></div></div>
+      <div id="legend" style="padding:8px 16px 14px;display:flex;gap:10px;flex-wrap:wrap;align-items:center"></div>
+    </div>
+  </div>
+  <div id="subTab" style="display:none;padding:0 16px 16px;display:none">
+    <div style="display:flex;gap:16px;align-items:flex-start">
+      <div style="width:220px;background:#fff;border-radius:10px;box-shadow:0 2px 8px rgba(0,0,0,0.1);overflow:hidden;flex-shrink:0">
+        <div style="background:#b71c1c;color:#fff;padding:10px 14px;font-weight:bold;font-size:13px">🔴 Mark Absent</div>
+        <div id="absentList" style="padding:12px"></div>
+      </div>
+      <div style="flex:1" id="subPanel">
+        <div style="background:#fff;border-radius:10px;padding:40px;text-align:center;box-shadow:0 2px 8px rgba(0,0,0,0.1)">
+          <div style="font-size:48px">✅</div>
+          <div style="font-size:18px;font-weight:bold;color:#2e7d32;margin-top:8px">All Teachers Present</div>
+          <div style="color:#888;margin-top:6px">Mark a teacher absent on the left to manage substitutions.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ADMIN PANEL -->
+<div id="adminPanel" style="display:none;padding:16px;font-family:Arial,sans-serif;background:#f0f4f8;min-height:100vh">
+  <div style="max-width:1100px;margin:0 auto">
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">
+      <button onclick="hideAdmin()" style="background:#073763;color:#fff;border:none;border-radius:8px;padding:8px 18px;font-weight:bold">← Back</button>
+      <h2 style="color:#073763">🛡️ Admin Panel — Licence Manager</h2>
+    </div>
+    <div id="adminMsg" style="display:none;border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:13px"></div>
+    <div class="card">
+      <div class="card-head" style="background:#1565c0">➕ Add New User</div>
+      <div class="card-body" style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">
+        <div><label style="font-size:11px;font-weight:bold;display:block;margin-bottom:3px">Email (ID)</label><input id="nu_email" placeholder="email@example.com" style="width:180px"/></div>
+        <div><label style="font-size:11px;font-weight:bold;display:block;margin-bottom:3px">Password</label><input id="nu_pass" placeholder="password" style="width:120px"/></div>
+        <div><label style="font-size:11px;font-weight:bold;display:block;margin-bottom:3px">Full Name</label><input id="nu_name" placeholder="Name" style="width:140px"/></div>
+        <div><label style="font-size:11px;font-weight:bold;display:block;margin-bottom:3px">School Name</label><input id="nu_school" placeholder="School Name" style="width:180px"/></div>
+        <div><label style="font-size:11px;font-weight:bold;display:block;margin-bottom:3px">Expiry (DD/MM/YYYY)</label><input id="nu_expiry" placeholder="31/12/2026" style="width:140px"/></div>
+        <div><label style="font-size:11px;font-weight:bold;display:block;margin-bottom:3px">Status</label>
+          <select id="nu_status" style="width:110px"><option value="approved">✅ Approved</option><option value="blocked">🚫 Blocked</option></select>
+        </div>
+        <button onclick="addUser()" style="padding:7px 20px;background:#1565c0;color:#fff;border:none;border-radius:8px;font-weight:bold;font-size:13px">Add User</button>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-head" style="background:#073763">👥 All Users
+        <button onclick="loadUsers()" style="margin-left:auto;background:#1a73e8;color:#fff;border:none;border-radius:6px;padding:3px 12px;font-size:12px">🔄 Refresh</button>
+      </div>
+      <div class="card-body"><div id="userTable">Loading...</div></div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ============================================================
+const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwjJBXVy1mWZ8QZpefQ6XORr8V9BF_LcJCowh6YUmsUs5obX7AdFTISOPMcVSbU97XcgQ/exec";
+const ADMIN_EMAIL     = "niteshchandra4u@gmail.com";
+// ============================================================
+
+const DAYS = ["MON","TUE","WED","THU","FRI","SAT"];
+const SCHEDULE = [
+  {p:"ASSEMBLY",  time:"08:30-08:40",type:"fixed"},
+  {p:"ZERO & CT", time:"08:40-09:10",type:"slot"},
+  {p:"1ST",       time:"09:10-09:45",type:"slot"},
+  {p:"2ND",       time:"09:45-10:20",type:"slot"},
+  {p:"3RD",       time:"10:20-10:55",type:"slot"},
+  {p:"L. BREAK",  time:"10:55-11:15",type:"fixed"},
+  {p:"4TH",       time:"11:15-11:50",type:"slot"},
+  {p:"5TH",       time:"11:50-12:25",type:"slot"},
+  {p:"6TH",       time:"12:25-13:00",type:"slot"},
+  {p:"S BREAK",   time:"13:00-13:10",type:"fixed"},
+  {p:"7TH",       time:"13:10-13:45",type:"slot"},
+  {p:"8TH",       time:"13:45-14:20",type:"slot"},
+  {p:"CT",        time:"14:20-14:30",type:"fixed"},
+];
+const SLOTS = ["1ST","2ND","3RD","4TH","5TH","6TH","7TH","8TH"];
+const COLORS = ["#d0e8ff","#d5f5d5","#fff3cd","#fde2e2","#e8d5f5","#d5f0f5","#ffe8d5","#e8f5d5","#f5d5e8","#d5d5f5","#f5f0d5","#d5f5f0","#fde8d5","#d5e8fd"];
+const SSLOTS = [{k:"1",label:"Subject 1",bg:"#e8f5e9",col:"#1a6e2e"},{k:"2",label:"Subject 2",bg:"#fff3e0",col:"#7b3f00"},{k:"3",label:"Subject 3",bg:"#ede7f6",col:"#4a148c"}];
+
+let currentUser=null, teachers=[], view="section", activeKey=null, master={}, tview={}, absentMap={}, subMap={}, absentKey=null;
+let nextId=1;
+
+// JSONP
+function callAPI(params){
+  return new Promise(resolve=>{
+    const cb="cb_"+Math.random().toString(36).slice(2);
+    const url=new URL(APPS_SCRIPT_URL);
+    Object.entries(params).forEach(([k,v])=>url.searchParams.set(k,v));
+    url.searchParams.set("callback",cb);
+    const s=document.createElement("script");
+    const t=setTimeout(()=>{cleanup();resolve({success:false,message:"Timeout"});},15000);
+    function cleanup(){clearTimeout(t);delete window[cb];if(s.parentNode)s.parentNode.removeChild(s);}
+    window[cb]=d=>{cleanup();resolve(d);};
+    s.onerror=()=>{cleanup();resolve({success:false,message:"Script load failed. Make sure you opened this file directly in a browser."});};
+    document.head.appendChild(s);
+  });
+}
+
+// LOGIN
+async function doLogin(){
+  const email=document.getElementById("lemail").value.trim();
+  const pass=document.getElementById("lpass").value;
+  const btn=document.getElementById("lbtn");
+  const err=document.getElementById("lerr");
+  if(!email||!pass){showErr("Please enter email and password.");return;}
+  btn.disabled=true;btn.textContent="⏳ Verifying...";err.style.display="none";
+  const data=await callAPI({action:"login",email,password:pass});
+  btn.disabled=false;btn.textContent="🔐 Sign In";
+  if(data.success){
+    currentUser={email,name:data.name,schoolName:data.schoolName,expiry:data.expiry,isAdmin:email.toLowerCase()===ADMIN_EMAIL.toLowerCase()};
+    document.getElementById("loginWrap").style.display="none";
+    document.getElementById("app").style.display="block";
+    document.getElementById("schoolTitle").textContent="🏫 "+currentUser.schoolName;
+    document.getElementById("userInfo").textContent="👤 "+currentUser.name+" | 📧 "+currentUser.email+" | ⏳ Expires: "+currentUser.expiry;
+    if(currentUser.isAdmin) document.getElementById("adminBtn").style.display="";
+    renderTeacherTable(); regen();
+  } else { showErr(data.message||"Login failed."); }
+}
+function showErr(m){const e=document.getElementById("lerr");e.textContent="⚠️ "+m;e.style.display="block";}
+document.getElementById("lpass").addEventListener("keydown",e=>{if(e.key==="Enter")doLogin();});
+
+function doLogout(){currentUser=null;location.reload();}
+
+// TABS
+function switchTab(t){
+  document.getElementById("ttTab").style.display=t==="tt"?"block":"none";
+  document.getElementById("subTab").style.display=t==="sub"?"block":"none";
+  document.querySelectorAll(".tab").forEach((b,i)=>{b.className="tab "+(i===(t==="tt"?0:1)?"active":"inactive");});
+  if(t==="sub") renderAbsentList();
+}
+
+// ADMIN
+function showAdmin(){document.getElementById("app").style.display="none";document.getElementById("adminPanel").style.display="block";loadUsers();}
+function hideAdmin(){document.getElementById("adminPanel").style.display="none";document.getElementById("app").style.display="block";}
+
+async function loadUsers(){
+  document.getElementById("userTable").innerHTML="Loading...";
+  const data=await callAPI({action:"getUsers",adminEmail:currentUser.email});
+  if(!data.success){document.getElementById("userTable").innerHTML="Error: "+data.message;return;}
+  let html='<table><thead><tr>';
+  ["Email","Name","School Name","Password","Expiry","Status","Actions"].forEach(h=>html+=`<th class="th-dark">${h}</th>`);
+  html+='</tr></thead><tbody>';
+  data.users.forEach(u=>{
+    const sc=u.status==="approved"?"#2e7d32":"#b71c1c";
+    const sbg=u.status==="approved"?"#e8f5e9":"#fdecea";
+    html+=`<tr>
+      <td>${u.email}</td><td>${u.name}</td><td>${u.schoolName}</td>
+      <td style="font-family:monospace">${"•".repeat(Math.min(u.password.length,8))}</td>
+      <td>${u.expiry}</td>
+      <td><span style="background:${sbg};color:${sc};padding:2px 10px;border-radius:12px;font-weight:bold;font-size:12px">${u.status==="approved"?"✅ Approved":"🚫 Blocked"}</span></td>
+      <td style="white-space:nowrap">
+        <button class="sub-btn" style="background:#e3f2fd;border:1px solid #90caf9;color:#1565c0;margin-right:4px" onclick='editUser(${JSON.stringify(u)})'>✏️ Edit</button>
+        <button class="sub-btn" style="background:#fde2e2;border:1px solid #e57373;color:#b71c1c" onclick="delUser('${u.email}')">🗑️</button>
+      </td>
+    </tr>`;
+  });
+  html+='</tbody></table>';
+  document.getElementById("userTable").innerHTML=html;
+}
+
+function editUser(u){
+  const np=prompt("New password (leave blank to keep):",u.password);
+  const ns=prompt("Status (approved/blocked):",u.status);
+  const ne=prompt("Expiry (DD/MM/YYYY):",u.expiry);
+  if(np!==null){u.password=np||u.password;u.status=ns||u.status;u.expiry=ne||u.expiry;saveUser("updateUser",u);}
+}
+async function addUser(){
+  const u={email:document.getElementById("nu_email").value,password:document.getElementById("nu_pass").value,name:document.getElementById("nu_name").value,schoolName:document.getElementById("nu_school").value,expiry:document.getElementById("nu_expiry").value,status:document.getElementById("nu_status").value};
+  if(!u.email||!u.password){alert("Email and password required.");return;}
+  await saveUser("addUser",u);
+}
+async function delUser(email){if(!confirm("Delete "+email+"?"))return;await saveUser("deleteUser",{email});}
+async function saveUser(action,user){
+  const data=await callAPI({action,adminEmail:currentUser.email,...flattenUser(action,user)});
+  const m=document.getElementById("adminMsg");
+  m.style.display="block";m.style.background=data.success?"#e8f5e9":"#fdecea";m.style.border=`1px solid ${data.success?"#81c784":"#ef9a9a"}`;m.style.color=data.success?"#2e7d32":"#b71c1c";
+  m.textContent=(data.success?"✅ ":"❌ ")+(data.message||"Done");
+  loadUsers();
+}
+
+// The callAPI for POST actions needs to pass user data as query params
+// Override callAPI for user management to pass all fields
+function callAPI(params){
+  return new Promise(resolve=>{
+    const cb="cb_"+Math.random().toString(36).slice(2);
+    const url=new URL(APPS_SCRIPT_URL);
+    Object.entries(params).forEach(([k,v])=>{if(typeof v==="string"||typeof v==="number")url.searchParams.set(k,v);});
+    url.searchParams.set("callback",cb);
+    const s=document.createElement("script");
+    const t=setTimeout(()=>{cleanup();resolve({success:false,message:"Timeout"});},15000);
+    function cleanup(){clearTimeout(t);delete window[cb];if(s.parentNode)s.parentNode.removeChild(s);}
+    window[cb]=d=>{cleanup();resolve(d);};
+    s.onerror=()=>{cleanup();resolve({success:false,message:"Failed to reach server."});};
+    document.head.appendChild(s);
+  });
+}
+
+function flattenUser(action,user){
+  if(action==="deleteUser") return {userEmail:user.email};
+  return {userEmail:user.email,userPassword:user.password,userName:user.name,userSchool:user.schoolName,userExpiry:user.expiry,userStatus:user.status};
+}
+
+// ============================================================
+// TIMETABLE LOGIC
+// ============================================================
+function initClass(){let o={};DAYS.forEach(d=>{o[d]={};SCHEDULE.forEach(s=>o[d][s.p]=s.type==="fixed"?s.p:null);});return o;}
+function markBusy(dic,n,d,p){if(!dic[n])dic[n]={};if(!dic[n][d])dic[n][d]={};dic[n][d][p]=true;}
+function isBusy(dic,n,d,p){return!!(dic[n]&&dic[n][d]&&dic[n][d][p]);}
+
+function regen(){
+  const assignments=[];
+  teachers.forEach(t=>{
+    if(!t.name.trim())return;
+    SSLOTS.forEach(({k},i)=>{
+      const subj=(t["s"+k]||"").trim(),cls=(t["c"+k]||"").split(",").map(x=>x.trim()).filter(Boolean),cnt=parseInt(t["p"+k])||0,par=!!t["par"+k];
+      if(subj&&cls.length&&cnt>0)assignments.push({name:t.name.trim(),subject:subj,classes:cls,count:cnt,parallel:par,ct:i===0?t.ct:""});
+    });
+  });
+  master={};let busy={};
+  assignments.forEach(({classes,ct})=>{classes.forEach(c=>{if(!master[c])master[c]=initClass();});if(ct?.trim()&&!master[ct.trim()])master[ct.trim()]=initClass();});
+  assignments.forEach(({name,ct})=>{if(ct?.trim()){let c=ct.trim();DAYS.forEach(d=>{master[c][d]["ZERO & CT"]="CT Session\n("+name+")";markBusy(busy,name,d,"ZERO & CT");});}});
+  const pg={};assignments.forEach(a=>{if(a.parallel){if(!pg[a.subject])pg[a.subject]=[];pg[a.subject].push(a);}});
+  Object.entries(pg).forEach(([,grp])=>{
+    const cnt=Math.max(...grp.map(g=>g.count));let asgn=0,tr=0;
+    while(asgn<cnt&&tr<2000){tr++;let d=DAYS[Math.floor(Math.random()*6)],p=SLOTS[Math.floor(Math.random()*8)];
+      if(grp.every(g=>g.classes.every(c=>master[c]&&!master[c][d][p]))&&grp.every(g=>!isBusy(busy,g.name,d,p))){grp.forEach(g=>{g.classes.forEach(c=>{master[c][d][p]=g.subject+"\n("+g.name+")";});markBusy(busy,g.name,d,p);});asgn++;}}
+  });
+  assignments.filter(a=>!a.parallel).forEach(({name,subject,classes,count})=>{
+    classes.forEach(c=>{if(!master[c])master[c]=initClass();let asgn=0,tr=0;
+      while(asgn<count&&tr<1000){tr++;let d=DAYS[Math.floor(Math.random()*6)],p=SLOTS[Math.floor(Math.random()*8)];
+        if(!master[c][d][p]&&!isBusy(busy,name,d,p)){master[c][d][p]=subject+"\n("+name+")";markBusy(busy,name,d,p);asgn++;}}});
+  });
+  tview={};teachers.forEach(t=>{if(t.name.trim())tview[t.name.trim()]=initClass();});
+  Object.keys(master).forEach(c=>{DAYS.forEach(d=>{SCHEDULE.forEach(item=>{let cell=master[c][d][item.p];if(cell&&cell.includes("(")){let tn=cell.split("(")[1].replace(")","").trim();if(tview[tn])tview[tn][d][item.p]=c+"\n"+cell.split("\n")[0];}});});});
+  renderTimetable();renderAbsentList();
+}
+
+function getSubjColors(){
+  const subjs=[...new Set(teachers.flatMap(t=>SSLOTS.map(({k})=>(t["s"+k]||"").trim()).filter(Boolean)))];
+  const map={};subjs.forEach((s,i)=>map[s]=COLORS[i%COLORS.length]);return map;
+}
+function getParallelSubjs(){return new Set(teachers.flatMap(t=>SSLOTS.filter(({k})=>t["par"+k]).map(({k})=>(t["s"+k]||"").trim()).filter(Boolean)));}
+
+function setView(v){
+  view=v;activeKey=null;
+  document.getElementById("secBtn").style.background=v==="section"?"#1a73e8":"transparent";
+  document.getElementById("tchBtn").style.background=v==="teacher"?"#1a73e8":"transparent";
+  renderTimetable();
+}
+
+function renderTimetable(){
+  const data=view==="section"?master:tview;
+  const keys=Object.keys(data).sort();
+  if(!activeKey||!keys.includes(activeKey))activeKey=keys[0];
+  const sc=getSubjColors(),ps=getParallelSubjs();
+  // Tabs
+  let tabHtml="";
+  keys.forEach(k=>tabHtml+=`<button onclick="setKey('${k}')" style="padding:5px 14px;border:none;border-radius:6px 6px 0 0;cursor:pointer;font-weight:bold;font-size:13px;background:${activeKey===k?"#073763":"#dde8f5"};color:${activeKey===k?"#fff":"#073763"}">${k}</button>`);
+  document.getElementById("ttTabs").innerHTML=tabHtml;
+  // Grid
+  if(!activeKey||!data[activeKey]){document.getElementById("ttGrid").innerHTML="<p style='color:#999;padding:12px'>No data</p>";return;}
+  let html='<table><thead><tr><th class="th-dark">TIME</th>';
+  DAYS.forEach(d=>html+=`<th class="th-dark">${d}</th>`);
+  html+='</tr></thead><tbody>';
+  SCHEDULE.forEach(item=>{
+    const fixed=item.type==="fixed";
+    html+=`<tr><td class="${fixed?"fixed-row":"time-col"}" style="font-weight:bold;font-size:11px">${item.time}</td>`;
+    DAYS.forEach(d=>{
+      let cell=data[activeKey][d][item.p];
+      let display=(cell||(fixed?item.p:"-")).replace(/NARAYANA SCHOOL DVC RTPS\s*[-–]?\s*/gi,"");
+      let bg=fixed?"#fce8e6":"#fff";
+      if(!fixed&&cell){for(let s in sc){if(cell.includes(s)){bg=sc[s];break;}}}
+      const isPar=!fixed&&cell&&[...ps].some(p=>cell.includes(p));
+      html+=`<td style="background:${bg};text-align:center;font-size:11px;vertical-align:middle;min-width:80px;line-height:1.4;${isPar?"outline:2px solid #e65100;position:relative":""}">`;
+      if(isPar)html+=`<span style="font-size:9px;color:#e65100;font-weight:bold">⚡</span><br>`;
+      html+=display.replace(/\n/,"<br>")+"</td>";
+    });
+    html+="</tr>";
+  });
+  html+="</tbody></table>";
+  document.getElementById("ttGrid").innerHTML=html;
+  // Legend
+  let leg="";
+  Object.entries(sc).forEach(([s,c])=>leg+=`<span style="background:${c};padding:3px 12px;border-radius:20px;font-size:12px;font-weight:bold;${ps.has(s)?"outline:2px solid #e65100":""}">${ps.has(s)?"⚡ ":""}${s}</span>`);
+  if(ps.size>0)leg+=`<span style="font-size:11px;color:#e65100">⚡ = Parallel</span>`;
+  document.getElementById("legend").innerHTML=leg;
+}
+
+function setKey(k){activeKey=k;renderTimetable();}
+
+// TEACHER TABLE
+function renderTeacherTable(){
+  let html='<table><thead><tr><th rowspan="2" style="background:#eaf0fb;color:#073763;padding:6px 10px;border:1px solid #c5d5ea;vertical-align:middle;white-space:nowrap">Teacher Name</th>';
+  SSLOTS.forEach(({label,bg,col})=>html+=`<th colspan="4" style="background:${bg};color:${col};padding:6px 8px;border:1px solid #c5d5ea;text-align:center">${label}</th>`);
+  html+='<th rowspan="2" style="background:#eaf0fb;color:#073763;padding:6px 8px;border:1px solid #c5d5ea;vertical-align:middle">CT Of</th>';
+  html+='<th rowspan="2" style="background:#eaf0fb;padding:6px 8px;border:1px solid #c5d5ea"></th></tr><tr>';
+  SSLOTS.forEach(({k,bg})=>["Subject","Classes","Per.","Parallel⚡"].forEach(h=>html+=`<th style="background:${bg};padding:5px 8px;border:1px solid #c5d5ea;font-weight:normal;font-size:11px;white-space:nowrap">${h}</th>`));
+  html+='</tr></thead><tbody>';
+  teachers.forEach(t=>{
+    html+=`<tr style="border-bottom:1px solid #eee"><td style="padding:4px"><input value="${t.name}" onchange="ut(${t.id},'name',this.value)" style="width:130px" placeholder="Mr. Sharma"/></td>`;
+    SSLOTS.forEach(({k,bg})=>{
+      const a=bg+"55";
+      html+=`<td style="padding:4px;background:${a}"><input value="${t["s"+k]||""}" onchange="ut(${t.id},'s${k}',this.value)" style="width:90px" placeholder="Subject"/></td>`;
+      html+=`<td style="padding:4px;background:${a}"><input value="${t["c"+k]||""}" onchange="ut(${t.id},'c${k}',this.value)" style="width:100px" placeholder="10A,10B"/></td>`;
+      html+=`<td style="padding:4px;background:${a}"><input value="${t["p"+k]||0}" onchange="ut(${t.id},'p${k}',this.value)" type="number" min="0" style="width:52px"/></td>`;
+      html+=`<td style="padding:4px;background:${a};text-align:center"><label style="display:flex;align-items:center;justify-content:center;gap:4px;cursor:pointer"><input type="checkbox" ${t["par"+k]?"checked":""} onchange="ut(${t.id},'par${k}',this.checked)" style="width:16px;height:16px;accent-color:#e65100"/><span style="font-size:11px;font-weight:bold;padding:1px 6px;border-radius:4px;background:${t["par"+k]?"#e65100":"#ddd"};color:${t["par"+k]?"#fff":"#999"}">${t["par"+k]?"⚡ ON":"OFF"}</span></label></td>`;
+    });
+    html+=`<td style="padding:4px"><input value="${t.ct||""}" onchange="ut(${t.id},'ct',this.value)" style="width:65px" placeholder="10A"/></td>`;
+    html+=`<td style="padding:4px"><button onclick="removeTeacher(${t.id})" style="background:#fde2e2;border:1px solid #e57373;color:#c62828;border-radius:5px;padding:4px 10px">✕</button></td></tr>`;
+  });
+  html+="</tbody></table>";
+  document.getElementById("teacherTable").innerHTML=html;
+}
+
+function ut(id,field,value){const t=teachers.find(x=>x.id===id);if(t){t[field]=value;regen();renderTeacherTable();}}
+function addTeacher(){teachers.push({id:nextId++,name:"",s1:"",c1:"",p1:1,par1:false,s2:"",c2:"",p2:0,par2:false,s3:"",c3:"",p3:0,par3:false,ct:""});renderTeacherTable();regen();}
+function removeTeacher(id){teachers=teachers.filter(t=>t.id!==id);renderTeacherTable();regen();}
+
+// SUBSTITUTION
+function getBusy(){const b={};Object.keys(master).forEach(c=>{DAYS.forEach(d=>{SCHEDULE.forEach(item=>{let cell=master[c][d][item.p];if(cell&&cell.includes("(")){let tn=cell.split("(")[1].replace(")","").trim();markBusy(b,tn,d,item.p);}});});});return b;}
+function getAvail(d,p,excl){const b=getBusy();return teachers.map(t=>t.name.trim()).filter(n=>n&&n!==excl&&!absentMap[n]&&!isBusy(b,n,d,p));}
+
+function renderAbsentList(){
+  let html="";
+  teachers.filter(t=>t.name.trim()).forEach(t=>{
+    const absent=!!absentMap[t.name.trim()];
+    html+=`<div onclick="toggleAbsent('${t.name.trim()}')" style="display:flex;align-items:center;gap:8px;margin-bottom:8px;padding:6px 10px;border-radius:8px;background:${absent?"#fdecea":"#f5f5f5"};cursor:pointer;border:${absent?"1px solid #e57373":"1px solid #ddd"}">
+      <span style="font-size:16px">${absent?"🔴":"🟢"}</span>
+      <span style="font-size:13px;font-weight:${absent?"bold":"normal"};color:${absent?"#b71c1c":"#333"}">${t.name.trim()}</span>
+    </div>`;
+  });
+  const absentList=teachers.map(t=>t.name.trim()).filter(n=>n&&absentMap[n]);
+  if(absentList.length>0)html+=`<button onclick="subMap={};renderSubPanel()" style="margin-top:8px;width:100%;background:#fff3e0;border:1px solid #ffb74d;color:#e65100;border-radius:6px;padding:5px;font-size:12px;font-weight:bold">🔄 Clear All</button>`;
+  document.getElementById("absentList").innerHTML=html;
+  renderSubPanel();
+}
+
+function toggleAbsent(name){if(absentMap[name])delete absentMap[name];else{absentMap[name]=true;absentKey=name;}renderAbsentList();}
+
+function renderSubPanel(){
+  const absentList=teachers.map(t=>t.name.trim()).filter(n=>n&&absentMap[n]);
+  if(!absentList.includes(absentKey))absentKey=absentList[0];
+  if(absentList.length===0){
+    document.getElementById("subPanel").innerHTML='<div style="background:#fff;border-radius:10px;padding:40px;text-align:center;box-shadow:0 2px 8px rgba(0,0,0,0.1)"><div style="font-size:48px">✅</div><div style="font-size:18px;font-weight:bold;color:#2e7d32;margin-top:8px">All Teachers Present</div><div style="color:#888;margin-top:6px">Mark a teacher absent on the left.</div></div>';
+    return;
+  }
+  const sch=tview[absentKey];
+  let total=0,done=0;
+  if(sch)SCHEDULE.filter(s=>s.type==="slot").forEach(item=>{DAYS.forEach(d=>{const cell=sch[d][item.p];if(cell&&cell!=="-"&&cell!==null){total++;if(subMap[absentKey+"|"+d+"|"+item.p])done++;}});});
+  let html=`<div style="background:#fff;border-radius:10px;box-shadow:0 2px 8px rgba(0,0,0,0.1);overflow:hidden">
+    <div style="background:#b71c1c;color:#fff;padding:10px 16px;font-weight:bold;display:flex;align-items:center;gap:8px">🔄 Substitution Manager
+      <span style="margin-left:8px;font-size:12px;font-weight:normal;background:rgba(255,255,255,0.2);border-radius:6px;padding:2px 10px">${absentList.length} absent</span>
+    </div>
+    <div style="display:flex;gap:4px;padding:10px 12px 0;background:#fdecea;border-bottom:2px solid #ef9a9a;flex-wrap:wrap">`;
+  absentList.forEach(n=>html+=`<button onclick="absentKey='${n}';renderSubPanel()" style="padding:5px 14px;border:none;border-radius:6px 6px 0 0;cursor:pointer;font-weight:bold;font-size:13px;background:${absentKey===n?"#b71c1c":"#ef9a9a"};color:#fff">🔴 ${n}</button>`);
+  html+=`</div>
+    <div style="padding:10px 16px 0">
+      <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px"><span style="color:#555">Substitutions assigned</span><span style="font-weight:bold;color:${done===total?"#2e7d32":"#e65100"}">${done}/${total}</span></div>
+      <div style="background:#eee;border-radius:10px;height:8px;overflow:hidden"><div style="width:${total>0?(done/total)*100:0}%;background:${done===total?"#2e7d32":"#e65100"};height:100%;border-radius:10px"></div></div>
+    </div>
+    <div style="overflow-x:auto;padding:12px"><table><thead><tr><th class="th-dark">TIME</th>`;
+  DAYS.forEach(d=>html+=`<th class="th-dark">${d}</th>`);
+  html+="</tr></thead><tbody>";
+  if(sch)SCHEDULE.forEach(item=>{
+    const fixed=item.type==="fixed";
+    html+=`<tr><td class="${fixed?"fixed-row":"time-col"}" style="font-weight:bold;font-size:11px;white-space:nowrap">${item.time}</td>`;
+    DAYS.forEach(d=>{
+      const cell=sch[d][item.p];
+      const hasClass=cell&&cell!=="-"&&cell!==null&&!fixed;
+      const sk=absentKey+"|"+d+"|"+item.p;
+      const sub=subMap[sk];
+      const avail=hasClass?getAvail(d,item.p,absentKey):[];
+      if(fixed){html+=`<td style="background:#fce8e6;text-align:center;font-size:11px;color:#999">${item.p}</td>`;return;}
+      if(!hasClass){html+=`<td style="text-align:center;color:#bbb;font-size:11px">-</td>`;return;}
+      html+=`<td style="background:${sub?"#e8f5e9":"#fdecea"};border:${sub?"1px solid #81c784":"1px solid #ef9a9a"};padding:6px;vertical-align:top;min-width:100px">
+        <div style="font-size:11px;font-weight:bold;color:#333;margin-bottom:4px">${cell.replace(/\n/," · ")}</div>`;
+      if(sub){
+        html+=`<div style="display:flex;align-items:center;gap:4px;flex-wrap:wrap"><span style="background:#2e7d32;color:#fff;border-radius:12px;padding:2px 8px;font-size:11px;font-weight:bold">✅ ${sub}</span>
+          <button onclick="subMap['${sk}']=''||delete subMap['${sk}'];renderSubPanel();renderAbsentList();" style="background:#fde2e2;border:1px solid #e57373;color:#b71c1c;border-radius:4px;padding:1px 6px;font-size:10px">✕</button></div>`;
+      } else {
+        html+=`<select onchange="if(this.value){subMap['${sk}']=this.value;renderSubPanel();renderAbsentList();}" style="width:100%;padding:3px;border-radius:5px;border:1px solid #e57373;font-size:11px">
+          <option value="">👤 Assign sub...</option>${avail.length===0?'<option disabled>— No one free —</option>':avail.map(n=>`<option value="${n}">${n}</option>`).join("")}</select>`;
+      }
+      html+="</td>";
+    });
+    html+="</tr>";
+  });
+  html+="</tbody></table></div></div>";
+  document.getElementById("subPanel").innerHTML=html;
+}
+
+// EXCEL DOWNLOAD
+function downloadExcel(){
+  const wb=XLSX.utils.book_new();
+  const allData=view==="section"?master:tview;
+  const label=view==="section"?"SECTION":"TEACHER";
+  const keys=Object.keys(allData).sort();
+  const sc=getSubjColors();
+  const s2hex={};Object.entries(sc).forEach(([s,c])=>s2hex[s]=c.replace("#",""));
+  const rows=[],merges=[],cellStyles={};let r=0;
+  rows.push([(currentUser?.schoolName||"SCHOOL")+" — TIMETABLE","","","","","",""]);
+  merges.push({s:{r,c:0},e:{r,c:6}});cellStyles[r+"_0"]="title";r++;
+  keys.forEach(key=>{
+    rows.push([label+": "+key,"","","","","",""]);
+    merges.push({s:{r,c:0},e:{r,c:6}});cellStyles[r+"_0"]="sec";r++;
+    rows.push(["TIME",...DAYS]);for(let c=0;c<7;c++)cellStyles[r+"_"+c]="hdr";r++;
+    SCHEDULE.forEach(item=>{
+      const fixed=item.type==="fixed";
+      let row=[item.time];
+      DAYS.forEach(d=>{let cell=allData[key][d][item.p];let val=cell||(fixed?item.p:"-");row.push(val.replace(/\n/g," | "));});
+      rows.push(row);
+      cellStyles[r+"_0"]=fixed?"fixedT":"timeC";
+      DAYS.forEach((d,di)=>{const cell=allData[key][d][item.p];if(fixed){cellStyles[r+"_"+(di+1)]="fixed";return;}let subj=null;for(let s in sc){if(cell&&cell.includes(s)){subj=s;break;}}if(subj)cellStyles[r+"_"+(di+1)]="subj:"+s2hex[subj];});
+      r++;
+    });
+    rows.push(["","","","","","",""]);r++;
+  });
+  const ws=XLSX.utils.aoa_to_sheet(rows);
+  ws["!cols"]=[{wch:14},...DAYS.map(()=>({wch:24}))];ws["!merges"]=merges;
+  const bT={style:"thin",color:{rgb:"073763"}},bM={style:"medium",color:{rgb:"073763"}};
+  const B=m=>{const b=m?bM:bT;return{top:b,bottom:b,left:b,right:b};};
+  Object.entries(cellStyles).forEach(([k,style])=>{
+    const [rr,cc]=k.split("_").map(Number);
+    const addr=XLSX.utils.encode_cell({r:rr,c:cc});
+    if(!ws[addr])ws[addr]={t:"s",v:""};
+    if(style==="title")ws[addr].s={font:{bold:true,sz:14,color:{rgb:"FFFFFF"}},fill:{fgColor:{rgb:"073763"}},alignment:{horizontal:"center",vertical:"center"},border:B(true)};
+    else if(style==="sec")ws[addr].s={font:{bold:true,sz:12,color:{rgb:"FFFFFF"}},fill:{fgColor:{rgb:"0D47A1"}},alignment:{horizontal:"center",vertical:"center"},border:B(true)};
+    else if(style==="hdr")ws[addr].s={font:{bold:true,color:{rgb:"FFFFFF"}},fill:{fgColor:{rgb:"073763"}},alignment:{horizontal:"center",vertical:"center"},border:B(true)};
+    else if(style==="fixed")ws[addr].s={fill:{fgColor:{rgb:"FCE8E6"}},alignment:{horizontal:"center",vertical:"center",wrapText:true},border:B(false)};
+    else if(style==="fixedT")ws[addr].s={font:{bold:true},fill:{fgColor:{rgb:"FCE8E6"}},alignment:{horizontal:"center",vertical:"center"},border:B(false)};
+    else if(style==="timeC")ws[addr].s={font:{bold:true},fill:{fgColor:{rgb:"F8FBFF"}},alignment:{horizontal:"center",vertical:"center"},border:B(false)};
+    else if(style.startsWith("subj:"))ws[addr].s={fill:{fgColor:{rgb:style.split(":")[1].toUpperCase()}},alignment:{horizontal:"center",vertical:"center",wrapText:true},border:B(false)};
+    else ws[addr].s={alignment:{horizontal:"center",vertical:"center",wrapText:true},border:B(false)};
+  });
+  ws["!rows"]=rows.map((_,i)=>{const t=cellStyles[i+"_0"];return{hpt:t==="title"?28:t==="hdr"?20:36};});
+  XLSX.utils.book_append_sheet(wb,ws,view==="section"?"All Sections":"All Teachers");
+  XLSX.writeFile(wb,"Timetable.xlsx");
+}
+
+// Init sample teachers
+teachers=[
+  {id:nextId++,name:"Mr. Sharma",s1:"Mathematics",c1:"10A, 10B",p1:5,par1:false,s2:"Physics",c2:"10A",p2:3,par2:false,s3:"",c3:"",p3:0,par3:false,ct:"10A"},
+  {id:nextId++,name:"Ms. Priya",s1:"HIN-BENG",c1:"10A",p1:4,par1:true,s2:"",c2:"",p2:0,par2:false,s3:"",c3:"",p3:0,par3:false,ct:"10B"},
+  {id:nextId++,name:"Mr. Ravi",s1:"HIN-BENG",c1:"10B",p1:4,par1:true,s2:"English",c2:"10A, 10B",p2:3,par2:false,s3:"",c3:"",p3:0,par3:false,ct:""},
+];
+</script>
+</body>
+</html>
